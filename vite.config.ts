@@ -48,9 +48,9 @@ export default defineConfig({
       minify: false,
       includeAssets: ['vite.svg'], // Only include existing assets
       manifest: {
-        name: 'My Awesome PWA', // Your app's full name
-        short_name: 'MyPWA',    // Short name for homescreen
-        description: 'My awesome React TypeScript PWA!',
+        name: 'Todo App PWA',
+        short_name: 'TodoApp',
+        description: 'A simple Todo application.',
         theme_color: '#ffffff', // Theme color for the browser UI
         icons: [
           {
