@@ -1,0 +1,66 @@
+name: Sync with Template
+
+on:
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+env:
+  TEMPLATE_REPO_URL: https://github.com/finitelyart/my-pwa-app.git
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch all history for a proper merge
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Sync with template
+        id: sync
+        run: |
+          git remote add template ${{ env.TEMPLATE_REPO_URL }}
+          git fetch template
+
+          # Merge changes from template's main branch.
+          # Using "|| true" to allow the workflow to continue even with merge conflicts.
+          git merge template/main --allow-unrelated-histories --no-ff --no-commit || true
+
+          # If merge conflicts exist, stage the files with conflict markers.
+          # This resolves the "unresolved merge" state and allows the PR creation to proceed.
+          if ! git diff --quiet --diff-filter=U; then
+            echo "Merge conflicts detected. Staging files with conflict markers."
+            git add .
+          fi
+
+          # Check if there are any changes to commit (including conflicts)
+          if git diff --quiet --cached; then
+            echo "No new changes to sync from the template."
+            echo "changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected from template. A PR will be created."
+            echo "changes=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.sync.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@v6
+        with:
+          title: "Chore: Sync with template"
+          body: |
+            This PR syncs the latest changes from the template repository.
+
+            **Template:** `${{ env.TEMPLATE_REPO_URL }}`
+          commit-message: "chore: sync with template repository"
+          branch: "chore/template-sync"
+          delete-branch: true
