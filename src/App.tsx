@@ -22,10 +22,11 @@ function App() {
   const [lists, setLists] = useState<TodoList[]>(() => {
     try {
       const savedLists = window.localStorage.getItem(LOCAL_STORAGE_KEY);
-      return savedLists ? JSON.parse(savedLists) : [];
+      // Provide default data for a better first-time experience
+      return savedLists ? JSON.parse(savedLists) : [{ id: 1, name: 'My Todos', todos: [] }];
     } catch (error) {
       console.error("Could not parse lists from localStorage", error);
-      return [];
+      return [{ id: 1, name: 'My Todos', todos: [] }];
     }
   });
 
@@ -35,6 +36,10 @@ function App() {
   // State for form inputs
   const [newListName, setNewListName] = useState('');
   const [newTodoText, setNewTodoText] = useState('');
+
+  // UI state
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isAddingTodo, setIsAddingTodo] = useState(false);
 
   // PWA install prompt state
   const [installPrompt, setInstallPrompt] = useState<any>(null);
@@ -81,12 +86,7 @@ function App() {
   const handleInstallClick = async () => {
     if (!installPrompt) return;
     installPrompt.prompt();
-    const { outcome } = await installPrompt.userChoice;
-    if (outcome === 'accepted') {
-      console.log('User accepted the install prompt');
-    } else {
-      console.log('User dismissed the install prompt');
-    }
+    await installPrompt.userChoice;
     setInstallPrompt(null);
   };
 
@@ -103,13 +103,17 @@ function App() {
     const updatedLists = [...lists, newList];
     setLists(updatedLists);
     setNewListName('');
-    // Set the new list as active
     setActiveListId(newList.id);
+    setIsDrawerOpen(false);
   };
-  
+
   const handleDeleteList = (listIdToDelete: number) => {
-    const updatedLists = lists.filter(list => list.id !== listIdToDelete);
-    setLists(updatedLists);
+    setLists(lists.filter(list => list.id !== listIdToDelete));
+  };
+
+  const handleSelectList = (listId: number) => {
+    setActiveListId(listId);
+    setIsDrawerOpen(false);
   };
 
   const handleAddTodo = (e: FormEvent) => {
@@ -120,40 +124,33 @@ function App() {
       text: newTodoText.trim(),
       completed: false,
     };
-    const updatedLists = lists.map(list => {
-      if (list.id === activeListId) {
-        return { ...list, todos: [...list.todos, newTodo] };
-      }
-      return list;
-    });
-    setLists(updatedLists);
+    setLists(lists.map(list => 
+      list.id === activeListId 
+        ? { ...list, todos: [...list.todos, newTodo] } 
+        : list
+    ));
     setNewTodoText('');
+    setIsAddingTodo(false);
   };
 
   const toggleTodo = (todoId: number) => {
     if (activeListId === null) return;
-    const updatedLists = lists.map(list => {
-      if (list.id === activeListId) {
-        const updatedTodos = list.todos.map(todo =>
-          todo.id === todoId ? { ...todo, completed: !todo.completed } : todo
-        );
-        return { ...list, todos: updatedTodos };
-      }
-      return list;
-    });
-    setLists(updatedLists);
+    setLists(lists.map(list => 
+      list.id === activeListId 
+        ? { ...list, todos: list.todos.map(todo => 
+            todo.id === todoId ? { ...todo, completed: !todo.completed } : todo
+          )} 
+        : list
+    ));
   };
 
   const deleteTodo = (todoId: number) => {
     if (activeListId === null) return;
-    const updatedLists = lists.map(list => {
-      if (list.id === activeListId) {
-        const updatedTodos = list.todos.filter(todo => todo.id !== todoId);
-        return { ...list, todos: updatedTodos };
-      }
-      return list;
-    });
-    setLists(updatedLists);
+    setLists(lists.map(list => 
+      list.id === activeListId 
+        ? { ...list, todos: list.todos.filter(todo => todo.id !== todoId) } 
+        : list
+    ));
   };
 
   const activeList = lists.find(list => list.id === activeListId);
@@ -161,82 +158,95 @@ function App() {
   // --- Render ---
 
   return (
-    <>
-      <h1>Advanced Todo App</h1>
-      <div className="app-container">
-        <div className="lists-panel">
-          <h2>My Lists</h2>
-          <form onSubmit={handleAddList}>
-            <input
-              type="text"
-              value={newListName}
-              onChange={(e) => setNewListName(e.target.value)}
-              placeholder="New list name"
-            />
-            <button type="submit">Add List</button>
-          </form>
-          <ul className="lists-list">
-            {lists.map(list => (
-              <li
-                key={list.id}
-                className={`list-item ${list.id === activeListId ? 'active' : ''}`}
-                onClick={() => setActiveListId(list.id)}
+    <div className={`app-wrapper ${isDrawerOpen ? 'drawer-open' : ''}`}>
+      <nav className="side-drawer">
+        <h2>My Lists</h2>
+        <ul className="lists-list">
+          {lists.map(list => (
+            <li
+              key={list.id}
+              className={`list-item ${list.id === activeListId ? 'active' : ''}`}
+              onClick={() => handleSelectList(list.id)}
+            >
+              <span className="list-name">{list.name}</span>
+              <button 
+                onClick={(e) => { e.stopPropagation(); handleDeleteList(list.id); }} 
+                className="delete-btn"
               >
-                <span className="list-name">
-                  {list.name}
-                </span>
-                <button onClick={(e) => { e.stopPropagation(); handleDeleteList(list.id); }} className="delete-list-btn">
-                  &times;
-                </button>
-              </li>
-            ))}
-          </ul>
+                &times;
+              </button>
+            </li>
+          ))}
+        </ul>
+        <form onSubmit={handleAddList} className="add-list-form">
+          <input
+            type="text"
+            value={newListName}
+            onChange={(e) => setNewListName(e.target.value)}
+            placeholder="Add new list..."
+          />
+          <button type="submit">+</button>
+        </form>
+        <div className="pwa-install-card">
+          {isInstalled ? null : installPrompt ? (
+            <button onClick={handleInstallClick}>Install App</button>
+          ) : null}
         </div>
+      </nav>
+
+      <div className="drawer-overlay" onClick={() => setIsDrawerOpen(false)}></div>
+
+      <main className="main-content">
+        <header className="app-header">
+          <button className="hamburger-btn" onClick={() => setIsDrawerOpen(!isDrawerOpen)}>
+            &#9776;
+          </button>
+          <h1>{activeList?.name || 'Todo'}</h1>
+        </header>
 
         <div className="todos-panel">
           {activeList ? (
-            <>
-              <h2>{activeList.name}</h2>
-              <form onSubmit={handleAddTodo}>
-                <input
-                  type="text"
-                  value={newTodoText}
-                  onChange={(e) => setNewTodoText(e.target.value)}
-                  placeholder="Add a new todo"
-                />
-                <button type="submit">Add Todo</button>
-              </form>
-              <ul className="todos-list">
-                {activeList.todos.map((todo) => (
-                  <li
-                    key={todo.id}
-                    className={todo.completed ? 'completed' : ''}
-                  >
-                    <span onClick={() => toggleTodo(todo.id)}>{todo.text}</span>
-                    <button onClick={() => deleteTodo(todo.id)}>Delete</button>
-                  </li>
-                ))}
-              </ul>
-            </>
+            <ul className="todos-list">
+              {activeList.todos.map((todo) => (
+                <li key={todo.id} className={todo.completed ? 'completed' : ''}>
+                  <span className="todo-checkbox" onClick={() => toggleTodo(todo.id)}>
+                    {todo.completed && '✔'}
+                  </span>
+                  <span className="todo-text" onClick={() => toggleTodo(todo.id)}>
+                    {todo.text}
+                  </span>
+                  <button onClick={() => deleteTodo(todo.id)} className="delete-btn">&times;</button>
+                </li>
+              ))}
+            </ul>
           ) : (
             <div className="no-list-selected">
-                <h2>No list selected</h2>
-                <p>Create a list or select one to start adding todos.</p>
+              <p>Create a list or select one from the menu.</p>
             </div>
           )}
         </div>
-      </div>
 
-       <div className="card">
-        {isInstalled ? (
-          <p>Application is already installed.</p>
-        ) : installPrompt ? (
-          <button onClick={handleInstallClick}>Install App</button>
-        ) : (
-          <p>App is installable, but the prompt is not available at the moment.</p>
+        {activeList && !isAddingTodo && (
+          <button className="fab" onClick={() => setIsAddingTodo(true)}>+</button>
         )}
-      </div>
-    </>
+
+        {isAddingTodo && (
+          <div className="add-todo-container">
+            <form onSubmit={handleAddTodo} className="add-todo-form">
+              <input
+                type="text"
+                value={newTodoText}
+                onChange={(e) => setNewTodoText(e.target.value)}
+                placeholder="Add a new todo"
+                autoFocus
+                onBlur={() => { if (newTodoText.trim() === '') setIsAddingTodo(false); }}
+              />
+              <button type="submit">Add</button>
+            </form>
+          </div>
+        )}
+      </main>
+    </div>
   );
 }
 
